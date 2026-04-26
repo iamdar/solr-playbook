@@ -13,40 +13,74 @@ The lab uses Vagrant to provision two Ubuntu 22.04 virtual machines with OpenJDK
 
 ### Phase 1: Fundamentals & Architecture
 Understand the "Magic" of the Inverted Index and how Solr organizes data.
-*   **The Inverted Index**: How Lucene allows near-instant searching across millions of documents.
-*   **Core Concepts**: Documents, Fields, Cores (Standalone), and Collections (SolrCloud).
-*   **Installation & CLI**: Navigating the `/opt/solr` directory and using the `bin/solr` script to manage services and cores.
-*   **The Solr Admin UI**: Overview of the dashboard, Query tool, and Schema Browser.
+*   **The Inverted Index**: Unlike a database that scans every row, Solr uses an Inverted Index—similar to the index at the back of a textbook. It maps every unique word (token) to the list of documents where it appears.
+    *   *Example*: A search for "Smartphone" instantly retrieves IDs `prod_01` and `prod_02` without reading the entire dataset.
+*   **Core Concepts**: 
+    *   **Documents**: The basic unit of data (like a row).
+    *   **Fields**: Key-value pairs within a document (like a column).
+    *   **Cores**: A single physical index on a machine (Standalone).
+    *   **Collections**: A logical index spread across multiple cores/nodes (SolrCloud).
+*   **Installation & CLI**: The `bin/solr` script is your primary tool for managing the service.
+    *   *Example*: `sudo su - solr -c "/opt/solr/bin/solr create -c my_core"` creates a new index.
+*   **The Solr Admin UI**: Accessible at `http://192.168.56.30:8983/solr`. Use the **Analysis** tool to see how your text is being broken down into tokens.
 
 ### Phase 2: Data Modeling & Schemas
 Learn to define how your data is stored and analyzed for search.
-*   **Managed Schema vs. Classic Schema**: Understanding why Managed Schema is the modern standard.
-*   **Field Types & Analyzers**: Configuring Tokenizers and Filters (e.g., `LowercaseFilter`, `StopFilter`, `StemmerOverride`).
-*   **Dynamic Fields & Copy Fields**: Strategies for flexible indexing and multi-field searching.
-*   **The Update API**: Indexing data via JSON, XML, and CSV. Handling atomic updates and optimistic concurrency.
+*   **Managed Schema vs. Classic Schema**: Managed Schema (`managed-schema.xml`) is the default and is modified via the Schema API. Classic (`schema.xml`) is manually edited and requires a reload.
+*   **Field Types & Analyzers**: Analyzers "clean" your text. A typical pipeline includes a **Tokenizer** (splitting text into words) and **Filters** (lowercase, removing "the/a/an", or stemming "running" to "run").
+    *   *Example*: `text_en` field type turns "iPhone 15s" into tokens `iphon` and `15`.
+*   **Dynamic Fields & Copy Fields**: 
+    *   **Dynamic**: Catch fields by suffix/prefix (e.g., `*_s` for strings).
+    *   **Copy**: Merge multiple fields into one for a "catch-all" search.
+    *   *Example*: Copying `title` and `author` into `text` allows searching both simultaneously.
+*   **The Update API**: Sending data to Solr.
+    *   *Example*: `curl -X POST -H 'Content-Type: application/json' --data-binary '[{"id":"1","name":"Test"}]' '.../update?commit=true'`.
 
 ### Phase 3: Search Mastery
 Master the query syntax to build powerful search experiences.
-*   **Standard Query Parser**: Using `q`, `fq` (Filter Query), `fl` (Field List), and `rows/start`.
-*   **DisMax & eDisMax**: Building user-friendly search parsers that handle typos and field boosting.
-*   **Faceting & Filtering**: Categorizing search results (Field facets, Range facets, Query facets).
-*   **Highlighting & Suggestions**: Improving UX with "Did you mean?" (Spellcheck) and hit highlighting.
-*   **Function Queries**: Sorting and boosting based on mathematical functions (e.g., "recency boosting").
+*   **Standard Query Parser**: Basic Lucene syntax. Use `q` for the main search and `fq` (Filter Query) for restrictive filters that don't affect scoring.
+    *   *Example*: `q=camera&fq=price:[500 TO 1000]&fl=name,price` (Search for cameras between $500-$1000, returning only name and price).
+*   **DisMax & eDisMax**: "Extended Disjunction Maximum". It's designed to be "user-proof"—it won't throw errors on special characters and allows boosting specific fields.
+    *   *Example*: `q=iPhone&qf=name^5.0 description^1.0` (Find "iPhone", but give 5x more importance if it's in the name).
+*   **Faceting & Filtering**: Calculating counts for categories.
+    *   *Example*: `facet=true&facet.field=category` returns how many items are in "Smartphone", "Laptop", etc.
+*   **Highlighting & Suggestions**: 
+    *   **Highlighting**: Wraps search terms in `<em>` tags in results.
+    *   **Suggestions**: "Did you mean?" functionality using the SpellCheck component.
 
 ### Phase 4: SolrCloud & Scalability
 Transition from a single node to a distributed, high-availability cluster.
-*   **SolrCloud Architecture**: Role of Apache ZooKeeper in managing cluster state.
-*   **Sharding & Replication**: How Solr splits data across nodes and ensures data safety.
-*   **Collections API**: Creating and managing distributed collections.
-*   **Leader Election**: What happens when a node fails.
-*   **Routing**: Understanding how Solr knows which shard holds which document.
+*   **SolrCloud Architecture**: Uses **ZooKeeper** to store configuration and track node health.
+*   **Sharding & Replication**: 
+    *   **Sharding**: Splitting a large index into smaller pieces (Shards) across nodes.
+    *   **Replication**: Creating copies of shards for high availability.
+*   **Collections API**: Managing the cluster state (Creating collections, splitting shards, adding replicas).
+    *   *Example*: `bin/solr create_collection -c products -shards 2 -replicationFactor 2`.
 
 ### Phase 5: Production Readiness
 Squeeze maximum performance and secure your cluster.
-*   **JVM Tuning**: Optimizing Garbage Collection (`G1GC`) and Heap memory for Solr.
-*   **Security**: Enabling Basic Authentication and Role-Based Access Control (RBAC).
-*   **Monitoring**: Using the Prometheus Exporter and Grafana for observability.
-*   **Performance Troubleshooting**: Identifying "Slow Queries" and using the `debugQuery=true` parameter.
+*   **JVM Tuning**: Solr is a Java app. Configuring the Heap (`Xms`/`Xmx`) and using the `G1GC` garbage collector is critical for stability.
+*   **Security**: Enabling Basic Auth and RBAC (Role-Based Access Control) to prevent unauthorized access.
+*   **Monitoring**: Tracking metrics like "Requests Per Second" and "Slow Queries" using the Prometheus Exporter.
+
+## Sample PHP Application
+To see Solr in action with a real UI, we've included a sample PHP app in the `php-app/` directory.
+
+### 1. Start the App
+Inside the `solr-01` VM:
+```bash
+cd /vagrant/php-app
+php -S 0.0.0.0:8000
+```
+
+### 2. Access the UI
+Open [http://192.168.56.30:8000](http://192.168.56.30:8000) in your host browser.
+
+### 3. Features
+*   **Live Search**: Search against the `tech_store` core.
+*   **Dynamic Facets**: Filter by category on the sidebar.
+*   **Hit Highlighting**: See exactly where your search terms match in the description.
+*   **Update API**: Use the "Add Product" form to see how indexing new data works in real-time.
 
 ## Getting Started
 

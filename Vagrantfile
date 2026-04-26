@@ -15,7 +15,7 @@ def define_solr_box(config, name, ip, mem, cpu, &block)
     node.vm.provision "shell", inline: <<-SHELL
       export DEBIAN_FRONTEND=noninteractive
       apt-get update
-      apt-get install -y openjdk-17-jdk wget curl net-tools vim git
+      apt-get install -y openjdk-17-jdk wget curl net-tools vim git php-cli php-curl
 
       # Download and Install Solr 9.6.0
       cd /tmp
